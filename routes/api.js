@@ -1,82 +1,73 @@
 'use strict';
 
-const express = require('express');
-const router = express.Router();
-const SudokuSolver = require('../controllers/sudoku-solver');
+const SudokuSolver = require('../controllers/sudoku-solver.js');
 
-const solver = new SudokuSolver();
+module.exports = function (app) {
 
-// Route to solve a Sudoku puzzle
-router.post('/solve', (req, res) => {
-  const { puzzle } = req.body;
+  // Get the sudoku solver.
+  let solver = new SudokuSolver();
 
-  const validation = solver.validate(puzzle);
-  if (validation !== true) {
-    return res.json(validation);
-  }
+  app.route('/api/check')
+    .post((req, res) => {
 
-  const solution = solver.solve(puzzle);
-  if (!solution) {
-    return res.json({ error: 'Puzzle cannot be solved' });
-  }
+      // Inputs.
+      let puzzle = req.body.puzzle;
+      let coord = req.body.coordinate;
+      let val = req.body.value;
 
-  res.json({ solution });
-});
+      // Check input fields exist.
+      if (puzzle == undefined | coord == undefined | val == undefined) return res.json({ "error": "Required field(s) missing" });
 
-// Route to check placement
-router.post('/check', (req, res) => {
-  const { puzzle, coordinate, value } = req.body;
+      // Test the inputs are valid.
+      let reCoord = /^([A-Ia-i])([1-9])$/;
+      let reVal = /^[1-9]$/;
+      let rePuz = /[^1-9\.]/;
+      if (!reCoord.test(coord)) return res.json({ "error": "Invalid coordinate" });
+      if (!reVal.test(val)) return res.json({ "error": "Invalid value" });
+      if (puzzle.length != 81) return res.json({ "error": "Expected puzzle to be 81 characters long" });
+      if (rePuz.test(puzzle)) return res.json({ "error": "Invalid characters in puzzle" });
 
-  // Check for missing fields
-  if (!puzzle || !coordinate || !value) {
-    return res.json({ error: 'Required field(s) missing' });
-  }
+      // Get the coordinate representation of the row and column.
+      let [_, row, col] = coord.match(reCoord);
 
-  // Validate the puzzle string
-  const validation = solver.validate(puzzle);
-  if (validation !== true) {
-    return res.json(validation);
-  }
+      // Test the value is already in that coordinate of the puzzle.
+      if (solver.checkDuplicateValue(puzzle, row, col, val)) return res.json({ "valid": true });
 
-  // Validate the coordinate format
-  if (!/^[A-I][1-9]$/.test(coordinate)) {
-    return res.json({ error: 'Invalid coordinate' });
-  }
+      // Determine if the value violates the row, column, and region sudoku rules.
+      let validRow = solver.checkRowPlacement(puzzle, row, col, val);
+      let validCol = solver.checkColPlacement(puzzle, row, col, val);
+      let validReg = solver.checkRegionPlacement(puzzle, row, col, val);
+      if (validRow & validCol & validReg) return res.json({ "valid": true });
 
-  // Validate the value format
-  if (!/^[1-9]$/.test(value)) {
-    return res.json({ error: 'Invalid value' });
-  }
+      // Determine the conflicts (if they exist).
+      let conflict = [];
+      if (!validRow) conflict.push("row");
+      if (!validCol) conflict.push("column");
+      if (!validReg) conflict.push("region");
 
-  // Convert row and column from coordinate
-  const row = coordinate[0]; // Letter (A-I)
-  const column = parseInt(coordinate[1], 10); // Number (1-9)
-  const rowIndex = row.charCodeAt(0) - 'A'.charCodeAt(0); // Convert A-I to 0-8
-  const colIndex = column - 1; // Convert 1-9 to 0-8
+      return res.json({ "valid": false, conflict });
+    });
 
-  // Check if the value is already placed at the given coordinate
-  const puzzleArray = puzzle.split('');
-  const currentValue = puzzleArray[rowIndex * 9 + colIndex];
-  if (currentValue === value) {
-    return res.json({ valid: true });
-  }
+  app.route('/api/solve')
+    .post((req, res) => {
+      // Inputs.
+      let puzzle = req.body.puzzle;
 
-  // Perform row, column, and region placement checks
-  const isRowValid = solver.checkRowPlacement(puzzle, row, column, value);
-  const isColValid = solver.checkColPlacement(puzzle, row, column, value);
-  const isRegionValid = solver.checkRegionPlacement(puzzle, row, column, value);
+      // Error if no puzzle is defined.
+      if (puzzle == undefined) return res.json({ error: 'Required field missing' });
 
-  // Gather conflicts if any
-  const conflicts = [];
-  if (!isRowValid) conflicts.push('row');
-  if (!isColValid) conflicts.push('column');
-  if (!isRegionValid) conflicts.push('region');
+      // Error if the puzzle has too many characters.
+      if (puzzle.length != 81) return res.json({ "error": "Expected puzzle to be 81 characters long" });
 
-  res.json({
-    valid: conflicts.length === 0,
-    ...(conflicts.length > 0 && { conflict: conflicts }),
-  });
-});
+      // Error if the puzzle contains invalid characters.
+      let rePuz = /[^1-9\.]/;
+      if (rePuz.test(puzzle)) return res.json({ "error": "Invalid characters in puzzle" });
 
-
-module.exports = router;
+      // Try to solve the puzzle.
+      let puzzleArr = [...puzzle];
+      // Error if it does not solve.
+      if (!solver.solve(puzzleArr)) return res.json({ "error": "Puzzle cannot be solved" });
+      // Return the solution.
+      return res.json({ "solution": puzzleArr.join("") });
+    });
+};
