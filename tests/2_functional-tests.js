@@ -145,4 +145,21 @@ suite('Functional Tests', () => {
                     done();
                });
      });
+     /*   test('Value already placed in puzzle', function () {
+            const puzzle =
+                 '1.5..2.84..63.12.7.2..5.....9..1....8.2.3674.3.7.2..9.47...8..1..16....926914.37.';
+            const coordinate = 'A1'; // First row, first column
+            const value = '1'; // Value already in place
+  
+            chai
+                 .request(server)
+                 .post('/api/check')
+                 .send({ puzzle, coordinate, value })
+                 .end((err, res) => {
+                      assert.equal(res.status, 200);
+                      assert.isObject(res.body);
+                      assert.property(res.body, 'valid');
+                      assert.isTrue(res.body.valid);
+                 });
+       }); */
 });
